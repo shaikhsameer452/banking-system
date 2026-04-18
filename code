@@ -1,0 +1,253 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define ACC_FILE "accounts.txt"
+#define TRX_FILE "transactions.txt"
+
+char currentUser[50];
+
+int userExists(char *name) {
+    FILE *fp = fopen(ACC_FILE, "r");
+    if (!fp) return 0;
+
+    char u[50], p[50];
+    float bal;
+
+    while (fscanf(fp, "%s %s %f", u, p, &bal) == 3) {
+        if (strcmp(u, name) == 0) {
+            fclose(fp);
+            return 1;
+        }
+    }
+
+    fclose(fp);
+    return 0;
+}
+
+float getBalance(char *user) {
+    FILE *fp = fopen(ACC_FILE, "r");
+    char u[50], p[50];
+    float bal;
+
+    while (fscanf(fp, "%s %s %f", u, p, &bal) == 3) {
+        if (strcmp(u, user) == 0) {
+            fclose(fp);
+            return bal;
+        }
+    }
+
+    fclose(fp);
+    return 0;
+}
+
+void updateBalance(char *user, float newBal) {
+    FILE *fp = fopen(ACC_FILE, "r");
+    FILE *temp = fopen("temp.txt", "w");
+
+    char u[50], p[50];
+    float bal;
+
+    while (fscanf(fp, "%s %s %f", u, p, &bal) == 3) {
+        if (strcmp(u, user) == 0)
+            fprintf(temp, "%s %s %.2f\n", u, p, newBal);
+        else
+            fprintf(temp, "%s %s %.2f\n", u, p, bal);
+    }
+
+    fclose(fp);
+    fclose(temp);
+
+    remove(ACC_FILE);
+    rename("temp.txt", ACC_FILE);
+}
+
+void logTransaction(char *type, float amt, char *toUser) {
+    FILE *fp = fopen(TRX_FILE, "a");
+
+    if (toUser == NULL)
+        fprintf(fp, "%s %s %.2f\n", currentUser, type, amt);
+    else
+        fprintf(fp, "%s %s %.2f TO %s\n", currentUser, type, amt, toUser);
+
+    fclose(fp);
+}
+
+int login() {
+    char u[50], p[50];
+    char inU[50], inP[50];
+    float bal;
+
+    printf("Username: ");
+    scanf("%s", inU);
+    printf("Password: ");
+    scanf("%s", inP);
+
+    FILE *fp = fopen(ACC_FILE, "r");
+    if (!fp) return 0;
+
+    while (fscanf(fp, "%s %s %f", u, p, &bal) == 3) {
+        if (strcmp(u, inU) == 0 && strcmp(p, inP) == 0) {
+            strcpy(currentUser, u);
+            fclose(fp);
+            return 1;
+        }
+    }
+
+    fclose(fp);
+    return 0;
+}
+
+void registerUser() {
+    char u[50], p[50];
+
+    printf("New username: ");
+    scanf("%s", u);
+
+    if (userExists(u)) {
+        printf("User exists\n");
+        return;
+    }
+
+    printf("Password: ");
+    scanf("%s", p);
+
+    FILE *fp = fopen(ACC_FILE, "a");
+    fprintf(fp, "%s %s %.2f\n", u, p, 0.0);
+    fclose(fp);
+
+    printf("Account created\n");
+}
+
+void deposit() {
+    float amt;
+    printf("Amount: ");
+    scanf("%f", &amt);
+
+    if (amt <= 0) return;
+
+    float bal = getBalance(currentUser);
+    bal += amt;
+    updateBalance(currentUser, bal);
+
+    logTransaction("DEPOSIT", amt, NULL);
+
+    printf("Deposited\n");
+}
+
+void withdraw() {
+    float amt;
+    printf("Amount: ");
+    scanf("%f", &amt);
+
+    float bal = getBalance(currentUser);
+
+    if (amt <= 0 || amt > bal) {
+        printf("Invalid\n");
+        return;
+    }
+
+    bal -= amt;
+    updateBalance(currentUser, bal);
+
+    logTransaction("WITHDRAW", amt, NULL);
+
+    printf("Withdrawn\n");
+}
+
+void transfer() {
+    char toUser[50];
+    float amt;
+
+    printf("Transfer to: ");
+    scanf("%s", toUser);
+
+    if (!userExists(toUser)) {
+        printf("User not found\n");
+        return;
+    }
+
+    printf("Amount: ");
+    scanf("%f", &amt);
+
+    float senderBal = getBalance(currentUser);
+
+    if (amt <= 0 || amt > senderBal) {
+        printf("Invalid\n");
+        return;
+    }
+
+    float receiverBal = getBalance(toUser);
+
+    senderBal -= amt;
+    receiverBal += amt;
+
+    updateBalance(currentUser, senderBal);
+    updateBalance(toUser, receiverBal);
+
+    logTransaction("TRANSFER", amt, toUser);
+
+    printf("Transferred\n");
+}
+
+void showBalance() {
+    printf("Balance: %.2f\n", getBalance(currentUser));
+}
+
+void showHistory() {
+    FILE *fp = fopen(TRX_FILE, "r");
+    if (!fp) {
+        printf("No history\n");
+        return;
+    }
+
+    char user[50], type[20], to[50];
+    float amt;
+
+    while (fscanf(fp, "%s %s %f", user, type, &amt) >= 3) {
+        if (strcmp(user, currentUser) == 0) {
+            printf("%s %.2f\n", type, amt);
+        }
+    }
+
+    fclose(fp);
+}
+
+void userMenu() {
+    int c;
+
+    while (1) {
+        printf("\n1.Deposit 2.Withdraw 3.Transfer 4.Balance 5.History 6.Logout\n");
+        scanf("%d",&c);
+
+        if(c==1) deposit();
+        else if(c==2) withdraw();
+        else if(c==3) transfer();
+        else if(c==4) showBalance();
+        else if(c==5) showHistory();
+        else break;
+    }
+}
+
+int main() {
+    int choice;
+
+    while (1) {
+        printf("\n1.Login 2.Register 3.Exit\n");
+        scanf("%d", &choice);
+
+        if (choice == 1) {
+            if (login()) {
+                userMenu();
+            } else {
+                printf("Invalid\n");
+            }
+        }
+        else if (choice == 2) {
+            registerUser();
+        }
+        else break;
+    }
+
+    return 0;
+}
